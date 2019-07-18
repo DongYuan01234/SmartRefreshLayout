@@ -1,7 +1,9 @@
 package com.scwang.refreshlayout.activity.practice;
 
 import android.content.Context;
+import android.os.Build;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.DividerItemDecoration;
 import android.support.v7.widget.LinearLayoutManager;
@@ -10,6 +12,7 @@ import android.support.v7.widget.Toolbar;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
 import com.chad.library.adapter.base.BaseQuickAdapter;
@@ -21,10 +24,13 @@ import com.scwang.refreshlayout.util.StatusBarUtil;
 import com.scwang.smartrefresh.layout.api.RefreshLayout;
 import com.scwang.smartrefresh.layout.listener.OnRefreshListener;
 import com.youth.banner.Banner;
+import com.youth.banner.BannerConfig;
 import com.youth.banner.loader.ImageLoader;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static android.support.v7.widget.DividerItemDecoration.VERTICAL;
 
@@ -41,7 +47,7 @@ public class BannerPracticeActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_practice_banner);
 
-        final Toolbar toolbar = (Toolbar)findViewById(R.id.toolbar);
+        final Toolbar toolbar = findViewById(R.id.toolbar);
         toolbar.setNavigationOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -49,47 +55,76 @@ public class BannerPracticeActivity extends AppCompatActivity {
             }
         });
 
-        final RecyclerView recyclerView = (RecyclerView) findViewById(R.id.recyclerView);
-        final RefreshLayout refreshLayout = (RefreshLayout) findViewById(R.id.refreshLayout);
+        final RecyclerView recyclerView = findViewById(R.id.recyclerView);
+        final RefreshLayout refreshLayout = findViewById(R.id.refreshLayout);
 
         mAdapter = new QuickAdapter();
         recyclerView.addItemDecoration(new DividerItemDecoration(this, VERTICAL));
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(mAdapter);
-        refreshLayout.autoRefresh();
+        final List<Movie> movies = new Gson().fromJson(JSON_MOVIES, new TypeToken<ArrayList<Movie>>() {}.getType());
+        mAdapter.replaceData(movies);
         refreshLayout.setOnRefreshListener(new OnRefreshListener() {
             @Override
-            public void onRefresh(final RefreshLayout refreshlayout) {
-                refreshlayout.getLayout().postDelayed(new Runnable() {
+            public void onRefresh(@NonNull final RefreshLayout refreshLayout) {
+                refreshLayout.getLayout().postDelayed(new Runnable() {
                     @Override
                     public void run() {
-                        List<Movie> movies = new Gson().fromJson(JSON_MOVIES, new TypeToken<ArrayList<Movie>>() {}.getType());
-                        mAdapter.replaceData(movies);
-                        refreshlayout.finishRefresh();
+                        if (mAdapter.getItemCount() < 2) {
+                            List<Movie> movies = new Gson().fromJson(JSON_MOVIES, new TypeToken<ArrayList<Movie>>() {}.getType());
+                            mAdapter.replaceData(movies);
+                        }
+                        refreshLayout.finishRefresh();
                     }
                 },2000);
             }
         });
+//        refreshLayout.setOnLoadMoreListener(new OnLoadMoreListener() {
+//            @Override
+//            public void onLoadMore(@NonNull RefreshLayout refreshLayout) {
+//                mAdapter.addData(movies);
+//                refreshLayout.finishLoadMoreWithNoMoreData();
+//            }
+//        });
+        refreshLayout.setOnLoadMoreListener(rl -> {
+            mAdapter.addData(movies);
+            rl.finishLoadMoreWithNoMoreData();
+        });
+
 
         //添加Header
-        View header = LayoutInflater.from(this).inflate(R.layout.listitem_movie_header, recyclerView, false);
+        View header = LayoutInflater.from(this).inflate(R.layout.item_movie_header, recyclerView, false);
         Banner banner = (Banner) header;
         banner.setImageLoader(new GlideImageLoader());
         banner.setImages(BANNER_ITEMS);
+        banner.setOnBannerListener(i -> {
+            Toast.makeText(this, "点击了第"+i+"页", Toast.LENGTH_SHORT).show();
+        });
+        if (Build.VERSION.SDK_INT > 26) {
+            List titles = BANNER_ITEMS.stream().map(new Function<BannerItem, String>() {
+                @Override
+                public String apply(BannerItem bannerItem) {
+                    return bannerItem.title;
+                }
+            }).collect(Collectors.toList());
+            banner.setBannerStyle(BannerConfig.CIRCLE_INDICATOR_TITLE_INSIDE);
+            banner.setBannerTitles((List<String>) titles);
+        }
         banner.start();
         mAdapter.addHeaderView(banner);
+        mAdapter.openLoadAnimation();
 
         //状态栏透明和间距处理
         StatusBarUtil.immersive(this);
         StatusBarUtil.setPaddingSmart(this, toolbar);
         StatusBarUtil.setPaddingSmart(this, recyclerView);
         StatusBarUtil.setMargin(this, findViewById(R.id.header));
-        StatusBarUtil.setPaddingSmart(this, findViewById(R.id.blurview));
+        StatusBarUtil.setPaddingSmart(this, findViewById(R.id.blurView));
     }
 
     public class QuickAdapter extends BaseQuickAdapter<Movie, BaseViewHolder> {
         public QuickAdapter() {
-            super(R.layout.listitem_movie_item);
+            super(R.layout.item_movie_item);
         }
 
         @Override
